@@ -11,6 +11,7 @@ Deux parcours :
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import logging
 import os
@@ -593,11 +594,29 @@ def message_erreur(exc: Exception) -> str:
     return f"Erreur : {exc}"
 
 
-# Sur téléphone, un onglet passé en arrière-plan (paiement dans un autre
-# onglet, détour par une autre application) cesse de répondre au serveur :
-# la page attend 10 minutes avant de considérer la visite terminée, au lieu de
-# 3 secondes par défaut, pour ne pas perdre la simulation en cours.
-DELAI_RECONNEXION_S = 600.0
+# Sur téléphone, un onglet passé en arrière-plan (détour par une autre
+# application) cesse de répondre au serveur : la page attend 3 minutes avant de
+# considérer la visite terminée, au lieu de 3 secondes par défaut, pour ne pas
+# perdre la simulation en cours. Chaque visite gardée occupe de la mémoire
+# (environ 5 Mo, davantage avec une simulation) : 10 minutes faisaient dépasser
+# la mémoire du serveur Render lors d'un pic de visites (2 novembre 2026).
+DELAI_RECONNEXION_S = 180.0
+# Une visite qui lance un paiement (Stripe s'ouvre dans un autre onglet) est
+# gardée 30 minutes, la durée pendant laquelle l'onglet guette le paiement :
+# l'acheteur retrouve sa simulation et son dossier s'ouvre tout seul.
+DELAI_RECONNEXION_PAIEMENT_S = 1800.0
+
+
+def prolonger_visite_pendant_paiement() -> None:
+    """Garde cette visite 30 minutes au lieu de 3 si le navigateur décroche.
+    Le délai est porté par la page, commune à toutes les visites : la visite
+    reçoit sa propre copie de la page, avec le délai long."""
+    client = ui.context.client
+    if client.page.reconnect_timeout == DELAI_RECONNEXION_PAIEMENT_S:
+        return
+    page = copy.copy(client.page)
+    page.reconnect_timeout = DELAI_RECONNEXION_PAIEMENT_S
+    client.page = page
 
 
 @ui.page("/", reconnect_timeout=DELAI_RECONNEXION_S)
@@ -3288,6 +3307,7 @@ def _build_investor_view():
     def guetter() -> None:
         achat["depuis"] = time.monotonic()
         minuteur_achat.activate()
+        prolonger_visite_pendant_paiement()
 
     def sur_case_cochee() -> None:
         if case_renonciation is not None and case_renonciation.value:
