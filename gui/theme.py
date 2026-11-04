@@ -5,6 +5,7 @@ structure, laiton pour les détails, Sora (titres, chiffres) et Public Sans
 elle-même (app/fonts) : pas de dépendance à Google Fonts, hors ligne compris."""
 from __future__ import annotations
 
+import mimetypes
 from pathlib import Path
 
 from nicegui import app, ui
@@ -29,6 +30,9 @@ app.add_static_files("/polices", DOSSIER_POLICES)
 # Images de l'aperçu du dossier sur l'accueil (scripts/generer_apercu_dossier.py).
 DOSSIER_APERCU = Path(__file__).resolve().parent.parent / "app" / "data" / "exemple-dossier" / "apercu"
 if DOSSIER_APERCU.is_dir():
+    # Absent de la table des types du serveur : sans cela, envoyé comme fichier
+    # générique, à la merci de ce que chaque navigateur accepte d'afficher.
+    mimetypes.add_type("image/webp", ".webp")
     app.add_static_files("/apercu-dossier", DOSSIER_APERCU)
 
 # Logo Credaura : une maison dans un sceau d'or (l'« aura », le cachet
