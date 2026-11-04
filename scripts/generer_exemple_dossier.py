@@ -5,7 +5,10 @@ location meublée à Saint-Étienne, avec la vraie étude de marché du quartier
 À relancer après chaque évolution du dossier ou des données de marché, puis
 committer app/data/exemple-dossier/. Sur macOS, la version PDF est produite
 par Microsoft Word s'il est installé (seul le document généré est ouvert puis
-refermé).
+refermé). Les images de l'aperçu de l'accueil (app/data/exemple-dossier/apercu/)
+sont refaites à partir de ce PDF, voir generer_apercu_dossier.py.
+
+À relancer aussi après chaque régénération des données (avril et octobre).
 
     venv/bin/python scripts/generer_exemple_dossier.py
 """
@@ -19,9 +22,11 @@ from pathlib import Path
 
 RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
+sys.path.insert(0, str(RACINE / "scripts"))
 
 from app import dossier_export, donnees_marche, market_data, schemas  # noqa: E402
 from app.chapitres_dossier import CHAPITRES_OPTIONNELS  # noqa: E402
+from generer_apercu_dossier import generer_apercu  # noqa: E402
 from gui.main import _marche_pour_dossier, build_simulation_input  # noqa: E402
 from gui.state import default_sim_state  # noqa: E402
 
@@ -29,6 +34,10 @@ DOSSIER = RACINE / "app" / "data" / "exemple-dossier"
 NOM = "Exemple de dossier de financement"
 ADRESSE = "12 rue Michelet, 42000 Saint-Étienne"
 SURFACE = 65
+# Cadre fixe de l'exemple, repris sur la page d'accueil (gui/accueil.py) : seuls
+# les indicateurs du marché (médiane, écart au marché) suivent les données.
+PRIX_ACHAT = 76_000
+LOYER_MENSUEL = 710
 
 
 async def etude_de_marche() -> tuple[dict, dict, dict, dict]:
@@ -48,10 +57,8 @@ def main() -> None:
     etat.update(
         {
             "surface_m2": SURFACE,
-            # Un projet équilibré, sans être idéal : prix 5 % sous la médiane du
-            # quartier, loyer meublé 10 % au-dessus du loyer de marché (nu).
-            "prix_achat": round(comparables["prix_m2_moyen"] * SURFACE * 0.95, -3),
-            "loyer_mensuel_hors_charges": round(loyer["loyer_m2_moyen"] * SURFACE * 1.10, -1),
+            "prix_achat": PRIX_ACHAT,
+            "loyer_mensuel_hors_charges": LOYER_MENSUEL,
             "regime_location": "meublee",
             "montant_mobilier": 5000,
             "montant_travaux": 8000,
@@ -103,6 +110,7 @@ def main() -> None:
         shutil.move(copie.with_suffix(".pdf"), pdf)
         copie.unlink()
         print(f"PDF : {pdf}")
+        generer_apercu(pdf)
 
 if __name__ == "__main__":
     main()

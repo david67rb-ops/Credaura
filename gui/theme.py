@@ -26,6 +26,10 @@ NEGATIVE = "var(--c-ko)"
 
 DOSSIER_POLICES = Path(__file__).resolve().parent.parent / "app" / "fonts"
 app.add_static_files("/polices", DOSSIER_POLICES)
+# Images de l'aperçu du dossier sur l'accueil (scripts/generer_apercu_dossier.py).
+DOSSIER_APERCU = Path(__file__).resolve().parent.parent / "app" / "data" / "exemple-dossier" / "apercu"
+if DOSSIER_APERCU.is_dir():
+    app.add_static_files("/apercu-dossier", DOSSIER_APERCU)
 
 # Logo Credaura : une maison dans un sceau d'or (l'« aura », le cachet
 # d'approbation), sur un badge bleu notaire à coins arrondis. Même dessin que

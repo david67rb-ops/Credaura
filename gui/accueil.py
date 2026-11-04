@@ -10,6 +10,7 @@ qu'on n'a pas de vrais avis de testeurs (à afficher marqués « avis vérifié 
 """
 from __future__ import annotations
 
+import json
 from typing import Awaitable, Callable
 
 from nicegui import ui
@@ -27,6 +28,25 @@ CSS = """
 .accueil .surtitre { font-size: 13px; font-weight: 600; letter-spacing: 0.14em; color: #86662A; }
 .accueil .titre-section { font-family: Sora, sans-serif; font-weight: 600; font-size: clamp(26px, 3vw, 36px); line-height: 1.2; }
 .accueil .gris { color: #4A5563; }
+/* Encart Dossier : 4 vraies pages de l'exemple, en éventail au défilement. Pas
+   de preserve-3d sur .pile : l'ordre du HTML doit décider de qui passe devant. */
+.scene-dossier { position: relative; display: block; width: 100%; aspect-ratio: 1/1.3; border-radius: 14px; text-decoration: none; }
+.scene-dossier:focus-visible { outline: 2px solid #E9D8B0; outline-offset: 4px; }
+.scene-dossier .pile { position: absolute; inset: 0; }
+.scene-dossier .feuille { position: absolute; left: 18%; top: 34.6%; width: 64%; aspect-ratio: 1287/910; border-radius: 4px; background: #F5F7FA center/cover no-repeat; box-shadow: 0 14px 28px rgba(3,10,22,.45); transform-origin: 50% 60%; will-change: transform; }
+.scene-dossier .feuille::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: #13243F; opacity: var(--ombre, 0); pointer-events: none; }
+.scene-dossier .couv { position: absolute; inset: 0; border-radius: inherit; background: #F5F7FA center/cover no-repeat; opacity: var(--couv, 1); }
+.scene-dossier .etiquette { position: absolute; top: 0; left: 0; padding: 4px 10px; border-radius: 999px; background: rgba(233,216,176,.14); border: 1px solid rgba(233,216,176,.4); color: #E9D8B0; font-size: 12px; font-weight: 600; line-height: 1.3; }
+.scene-dossier .legende { position: absolute; left: 0; right: 0; bottom: 0; text-align: center; font-size: 12.5px; line-height: 1.3; color: #9FB0C6; opacity: var(--legende, 1); }
+.scene-dossier .legende b { color: #E9D8B0; }
+/* Ordinateur : les cartes sont côte à côte. La carte du verdict s'ajuste à son
+   contenu, sans blanc, au lieu de s'étirer sur la hauteur de celle du dossier ;
+   l'éventail s'ouvre de gauche à droite dans une bande basse. */
+@media (min-width: 960px) {
+  .carte-verdict { align-self: flex-start; }
+  .scene-dossier { aspect-ratio: 476/201; }
+  .scene-dossier .feuille { width: 38.6%; left: 0; top: 16%; transform-origin: 50% 50%; }
+}
 /* Bandeau du menu fixé en haut de l'écran (accueil et autres pages du site). */
 .barre-menu { position: sticky; top: 0; z-index: 40; background: #1B3358; color: #FFFFFF; font-family: 'Public Sans', sans-serif; font-size: 16px; line-height: 1.5; transition: box-shadow 0.2s ease; }
 .barre-menu.defile { box-shadow: 0 6px 24px rgba(8, 20, 40, 0.28); }
@@ -201,15 +221,75 @@ def _chiffre(libelle: str, valeur: str) -> str:
     return f'<div class="chiffre"><span class="libelle">{libelle}</span><span class="valeur">{valeur}</span></div>'
 
 
-def _page_dossier(contenu: str) -> str:
-    return (
-        '<div style="flex:1 1 0;aspect-ratio:3/4;background:#F5F7FA;border-radius:6px;padding:10px;box-sizing:border-box;'
-        f'display:flex;flex-direction:column;gap:6px;filter:blur(1.5px)">{contenu}</div>'
-    )
+def _legende_apercu() -> str:
+    """Légende de l'aperçu du dossier : le nombre de pages vient du fichier
+    écrit avec les images ; sans lui, la seule mention de l'exemple fictif."""
+    try:
+        nb_pages = json.loads((theme.DOSSIER_APERCU / "apercu.json").read_text(encoding="utf-8"))["nb_pages"]
+    except (OSError, ValueError, KeyError):
+        return "Exemple fictif"
+    return f"<b>4 des {nb_pages} pages</b> · T3 de 65 m² à Saint-Étienne"
 
 
-_LIGNE = '<div style="height:5px;background:#C7D0DB;border-radius:2px"></div>'
-_TITRE = '<div style="height:10px;width:60%;background:#1B3358;border-radius:2px"></div>'
+# Valeurs issues du prototype validé le 4 novembre 2026. L'encart est rendu après
+# ce script, et il doit être retrouvé à chaque mise à jour : l'accueil peut être
+# masqué puis réaffiché sans rechargement.
+SCRIPT_SCENE_DOSSIER = """<script>
+(() => {
+  const FERME = { rx: 52, rz: -9, ty: 10, s: 0.9 };
+  const OUVERT = [ // 0 garde (en haut, derrière) ... 3 synthèse (en bas, devant)
+    { rz: -4, tx: -11, ty: -75 }, { rz: -1, tx: -4, ty: -21 },
+    { rz: 1, tx: 4, ty: 21 }, { rz: 3, tx: 11, ty: 63 } ];
+  const ROTATION_LARGE = [-2.5, -1, 1, 2.5];
+  const large = window.matchMedia('(min-width: 960px)');
+  // Ordinateur : de gauche à droite, la dernière page calée sur le bord droit.
+  const ouvert = (i, scene, feuille) => large.matches
+    ? { rz: ROTATION_LARGE[i], tx: i * (scene.offsetWidth - feuille.offsetWidth) / 3 / feuille.offsetWidth * 100, ty: 0 }
+    : OUVERT[i];
+  const clamp = v => Math.min(1, Math.max(0, v));
+  const lisse = t => t < .5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3) / 2;
+  const reduit = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const dessiner = () => {
+    const scene = document.getElementById('dossier-scene');
+    if (!scene) return false;
+    const p = reduit ? 1 : clamp((0.92*innerHeight - scene.getBoundingClientRect().top) / (0.62*innerHeight));
+    const redresse = lisse(clamp(p / 0.45));
+    scene.querySelectorAll('.feuille').forEach(feuille => {
+      const i = Number(feuille.dataset.i);
+      const e = lisse(clamp((p - 0.35 - i*0.06) / 0.47));
+      const rx = FERME.rx * (1 - redresse), s = FERME.s + (1 - FERME.s) * redresse;
+      const epaisseur = (3 - i) * 3 * (1 - e);
+      const cible = ouvert(i, scene, feuille);
+      const rz = FERME.rz * (1 - e) + cible.rz * e, tx = cible.tx * e;
+      const ty = FERME.ty * (1 - redresse) + cible.ty * e - epaisseur;
+      feuille.style.transform = `perspective(1100px) translate3d(${tx}%,${ty}%,0) rotateX(${rx}deg) rotateZ(${rz}deg) scale(${s})`;
+      feuille.style.setProperty('--ombre', ((3 - i) * 0.12 * (1 - e)).toFixed(3));
+    });
+    scene.querySelector('.couv').style.setProperty('--couv', (1 - lisse(clamp((p - 0.32) / 0.2))).toFixed(3));
+    scene.querySelector('.legende').style.setProperty('--legende', clamp((p - 0.7) / 0.3).toFixed(3));
+    return true;
+  };
+  if (!reduit) {
+    let prevu = false;
+    const planifier = () => {
+      if (prevu) return;
+      prevu = true;
+      requestAnimationFrame(() => { prevu = false; dessiner(); });
+    };
+    window.addEventListener('scroll', planifier, {passive: true});
+    window.addEventListener('resize', planifier);
+  } else {
+    window.addEventListener('resize', dessiner);
+  }
+  let essais = 0;
+  const attente = setInterval(() => { if (dessiner() || ++essais > 100) clearInterval(attente); }, 200);
+  document.addEventListener('click', e => {
+    if (e.target.closest && e.target.closest('#dossier-scene')) {
+      window.goatcounter && window.goatcounter.count({path: 'apercu-dossier-clic', title: "Clic sur l'aperçu du dossier", event: true});
+    }
+  });
+})();
+</script>"""
 
 RESULTAT = f"""
 <section id="resultat" class="bloc" style="padding-top:clamp(48px,7vw,88px);padding-bottom:clamp(48px,7vw,88px);display:flex;flex-direction:column;gap:32px">
@@ -218,7 +298,7 @@ RESULTAT = f"""
     <h2 class="titre-section">Un verdict clair tout de suite, puis le dossier pour la banque</h2>
   </div>
   <div style="display:flex;flex-wrap:wrap;gap:24px">
-    <div style="flex:1 1 420px;min-width:0;background:#FFFFFF;border:1px solid #DCE3EC;border-radius:20px;padding:clamp(20px,2.6vw,32px);box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;gap:18px">
+    <div class="carte-verdict" style="flex:1 1 420px;min-width:0;background:#FFFFFF;border:1px solid #DCE3EC;border-radius:20px;padding:clamp(20px,2.6vw,32px);box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;gap:18px">
       <span class="gris" style="font-size:13px;font-weight:600">GRATUIT · EXEMPLE : T3 DE 65 m² À SAINT-ÉTIENNE</span>
       <div style="display:flex;align-items:center;gap:12px">
         <span style="width:44px;height:44px;border-radius:50%;background:#E3F1EA;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
@@ -238,11 +318,19 @@ RESULTAT = f"""
     <div id="dossier" style="flex:1 1 420px;min-width:0;background:{ENCRE};color:#FFFFFF;border-radius:20px;padding:clamp(20px,2.6vw,32px);box-sizing:border-box;display:flex;flex-direction:column;gap:18px">
       <span style="font-size:13px;font-weight:600;letter-spacing:0.08em;color:{LAITON_CLAIR}">LE DOSSIER DE FINANCEMENT</span>
       <span style="font-family:Sora,sans-serif;font-weight:600;font-size:24px;line-height:1.25">Un dossier Word complet, à ton nom, prêt à remettre à ton conseiller</span>
-      <div style="display:flex;gap:12px" aria-hidden="true">
-        {_page_dossier(_TITRE + '<div style="height:40%;background:#DCE7F3;border-radius:3px"></div>' + _LIGNE + _LIGNE)}
-        {_page_dossier(_TITRE + '<div style="display:flex;gap:4px;align-items:flex-end;height:40%"><div style="flex:1;height:40%;background:#A8823B"></div><div style="flex:1;height:70%;background:#A8823B"></div><div style="flex:1;height:55%;background:#A8823B"></div><div style="flex:1;height:90%;background:#A8823B"></div></div>' + _LIGNE + _LIGNE)}
-        {_page_dossier(_TITRE + _LIGNE + _LIGNE + _LIGNE + '<div style="height:30%;background:#E3F1EA;border-radius:3px"></div>')}
-      </div>
+      <a class="scene-dossier" id="dossier-scene" href="/exemple-dossier" target="_blank" rel="noopener"
+         aria-label="Exemple fictif de dossier : page de garde, étude de marché, plan de financement et synthèse. Ouvrir l'exemple complet.">
+        <div class="pile">
+          <div class="feuille" data-i="0" style="background-image:url(/apercu-dossier/1-garde.webp)"></div>
+          <div class="feuille" data-i="1" style="background-image:url(/apercu-dossier/2-marche.webp)"></div>
+          <div class="feuille" data-i="2" style="background-image:url(/apercu-dossier/3-financement.webp)"></div>
+          <div class="feuille" data-i="3" style="background-image:url(/apercu-dossier/4-synthese.webp)">
+            <div class="couv" style="background-image:url(/apercu-dossier/1-garde.webp)"></div>
+          </div>
+        </div>
+        <span class="etiquette">EXEMPLE FICTIF</span>
+        <span class="legende">{_legende_apercu()}</span>
+      </a>
       <ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px;font-size:15px;color:#D9E1EC">
         <li style="display:flex;gap:10px;align-items:flex-start">{COCHE}<span>Étude de marché du quartier, avec la carte et les ventes comparables</span></li>
         <li style="display:flex;gap:10px;align-items:flex-start">{COCHE}<span>Plan de financement, recettes et charges, cash-flow mois par mois</span></li>
@@ -426,6 +514,7 @@ def construire_accueil(on_verifier: Callable[[dict], Awaitable[None]]) -> ui.ele
                     ui.html(ACCROCHE).style("flex:1 1 440px;min-width:0")
                     _formulaire(on_verifier)
         ui.html(RESULTAT).classes("w-full")
+        ui.add_body_html(SCRIPT_SCENE_DOSSIER)
         ui.html(COMMENT).classes("w-full")
         ui.html(TARIFS).classes("w-full")
         ui.html(_faq()).classes("w-full")
