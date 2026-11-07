@@ -3,9 +3,9 @@
   "configurations": [
     {
       "name": "simulateur-immo",
-      "runtimeExecutable": "/Users/davidlehmann/Documents/Claude/immo-rentabilite/venv/bin/python3",
+      "runtimeExecutable": "/Users/davidlehmann/Documents/09_Entreprises/03_Credaura/02_immo-rentabilite/venv/bin/python3",
       "runtimeArgs": [
-        "/Users/davidlehmann/Documents/Claude/immo-rentabilite/main.py",
+        "/Users/davidlehmann/Documents/09_Entreprises/03_Credaura/02_immo-rentabilite/main.py",
         "--web",
         "--port",
         "8080"
