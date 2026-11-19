@@ -23,10 +23,12 @@ def publier(contenu: bytes) -> str:
     _apercus[jeton] = contenu
     while len(_apercus) > NB_APERCUS_EN_MEMOIRE:
         _apercus.popitem(last=False)
-    return f"/apercu-dossier/{jeton}"
+    # « /apercu-docx » et non « /apercu-dossier » : ce préfixe sert déjà les
+    # images de l'accueil (theme.py), dont le montage intercepterait la requête.
+    return f"/apercu-docx/{jeton}"
 
 
-@app.get("/apercu-dossier/{jeton}")
+@app.get("/apercu-docx/{jeton}")
 def _servir(jeton: str) -> Response:
     contenu = _apercus.pop(jeton, None)
     if contenu is None:
