@@ -54,12 +54,24 @@ window.afficherApercuDossier = async function (url, id, pagesLisibles) {
     renderHeaders: true, renderFooters: true, useBase64URL: true, experimental: false,
   });
   const pages = Array.from(cible.querySelectorAll('section.docx'));
-  const ajuster = () => pages.forEach((page) => {
-    page.style.zoom = '';
-    page.style.zoom = Math.min(1, cible.clientWidth / page.offsetWidth);
-  });
+  // Largeur utile : sans le padding du cadre (clientWidth l'inclut), sinon la
+  // page est réduite 24 px trop large et coupée à droite sur téléphone.
+  const ajuster = () => {
+    const style = getComputedStyle(cible);
+    const utile = cible.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    pages.forEach((page) => {
+      page.style.zoom = '';
+      page.style.zoom = Math.min(1, utile / page.offsetWidth);
+    });
+  };
   ajuster();
-  if (!cible._ajustement) { cible._ajustement = true; window.addEventListener('resize', ajuster); }
+  // Les images peuvent élargir une page une fois chargées : on recalcule.
+  Promise.all(pages.flatMap((page) => Array.from(page.querySelectorAll('img')).map((img) =>
+    img.complete ? null : new Promise((ok) => { img.addEventListener('load', ok); img.addEventListener('error', ok); })
+  ))).then(ajuster);
+  // Au redimensionnement : les pages du dernier aperçu généré.
+  cible._ajuster = ajuster;
+  if (!cible._ajustement) { cible._ajustement = true; window.addEventListener('resize', () => cible._ajuster()); }
   if (pagesLisibles !== null) {
     pages.forEach((page, i) => { if (i >= pagesLisibles) page.classList.add('page-floutee'); });
   }
